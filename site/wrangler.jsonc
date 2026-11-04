@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "black-r-media",
+  "main": "worker/index.js",
+  "account_id": "084057023053f1d2723e614fdf90162a",
+  "compatibility_date": "2026-11-04",
+  "workers_dev": true,
+  "preview_urls": true,
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "black-r-media",
+    "database_id": "40c1117c-0e1c-410c-9c8d-34ace5a57d8e",
+    "migrations_dir": "drizzle"
+  }]
+}

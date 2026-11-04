@@ -1,0 +1,12 @@
+{
+  "name": "black-r-media",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/compile.mjs && bash scripts/build.sh",
+    "validate": "node scripts/validate-artifact.mjs",
+    "test": "node scripts/test.mjs",
+    "deploy": "npm run build && npx wrangler deploy",
+    "db:migrate": "npx wrangler d1 migrations apply black-r-media --remote"
+  }
+}
