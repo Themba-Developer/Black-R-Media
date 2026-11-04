@@ -23,3 +23,5 @@ Visitors start a chat, then use “Call the team” when an admin has enabled �
 Cloudflare TURN is configured on the live Worker through private `TURN_KEY_ID` and `TURN_KEY_API_TOKEN` secrets. The server generates short-lived relay credentials; long-lived credentials stay server-side. The live authenticated ICE endpoint was verified to return TURN relay settings on 4 November 2026. No real two-device audio test has been performed in this environment. For another deployment, create a TURN key (separate from a Realtime SFU app) and set these two Worker secrets with Wrangler; never commit their values.
 
 Voice migration: `npm run db:migrate`. For local preview also run `npx wrangler d1 migrations apply black-r-media --local`.
+
+Caller waiting music uses an original melody synthesized in the browser, with no third-party recording or music download. It plays only while ringing and stops when answered or ended. Music is optional when Web Audio is unavailable.
