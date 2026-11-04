@@ -9,7 +9,8 @@ async function request(path,data){const c=identity();return api((isAdmin?'/admin
 function controls(show){el('voice-controls').hidden=!show;if(el('voice-start'))el('voice-start').hidden=show;el('voice-mute').textContent='Mute';el('voice-mute').setAttribute('aria-pressed','false')}
 function stopRing(){clearInterval(ringTimer);ringTimer=null;ringing=false}
 function ring(){if(ringing)return;ringing=true;const tone=()=>{if(!ringContext||ringContext.state!=='running')return;const oscillator=ringContext.createOscillator(),gain=ringContext.createGain();oscillator.connect(gain);gain.connect(ringContext.destination);oscillator.frequency.value=660;gain.gain.setValueAtTime(.08,ringContext.currentTime);gain.gain.exponentialRampToValueAtTime(.001,ringContext.currentTime+.3);oscillator.start();oscillator.stop(ringContext.currentTime+.3)};tone();ringTimer=setInterval(tone,1800)}
-// Owner-supplied track, trimmed to 6:00–6:30 and decoded once for seamless looping.
+// The spoken introduction plays once; only the owner-supplied 6:00–6:30 music excerpt loops.
+const holdIntroSeconds=1.995532879818594;
 let holdContext=null,holdSource=null,holdGain=null,holdBuffer=null,holdLoading=null,holdWanted=false;
 function prepareHoldMusic(){
  if(isAdmin)return;
@@ -36,7 +37,7 @@ function startHoldMusic(){
  holdWanted=true;if(!holdContext||!holdBuffer||holdSource)return;
  try{
   holdGain=holdContext.createGain();holdGain.gain.value=.3;holdGain.connect(holdContext.destination);
-  holdSource=holdContext.createBufferSource();holdSource.buffer=holdBuffer;holdSource.loop=true;holdSource.loopStart=0;holdSource.loopEnd=Math.min(30,holdBuffer.duration);holdSource.connect(holdGain);holdSource.start();
+  holdSource=holdContext.createBufferSource();holdSource.buffer=holdBuffer;holdSource.loop=true;holdSource.loopStart=holdIntroSeconds;holdSource.loopEnd=holdBuffer.duration;holdSource.connect(holdGain);holdSource.start();
   if(holdContext.state!=='running'){resume.hidden=false;resumeHoldMusic()}
  }catch{stopHoldMusic()}
 }

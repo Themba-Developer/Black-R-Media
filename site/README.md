@@ -24,7 +24,7 @@ Cloudflare TURN is configured on the live Worker through private `TURN_KEY_ID` a
 
 Voice migration: `npm run db:migrate`. For local preview also run `npx wrangler d1 migrations apply black-r-media --local`.
 
-Caller waiting music uses the owner-supplied “Jam Session 1 (Live)” recording, trimmed to 6:00–6:30 (30 seconds) and encoded to `web/waiting-music.m4a`. The owner confirmed ownership of the track copyright. The browser decodes the clip once and loops it while ringing, stopping when answered or ended. Music is optional when Web Audio is unavailable. Only the selected excerpt is included in the website.
+Caller waiting music uses the owner-supplied “Jam Session 1 (Live)” recording, trimmed to 6:00–6:30 (30 seconds) and encoded to `web/waiting-music.m4a`. The owner confirmed ownership of the track copyright. A spoken “Your call will be answered shortly” introduction plays once before the music. The browser decodes the combined asset once, then loops only the 30-second music excerpt while ringing, stopping when answered or ended. The loop starts at 1.995532879818594 seconds, immediately after the announcement and a short pause. Music is optional when Web Audio is unavailable. Only the selected excerpt is included in the website.
 
 ## Chat archive
 
