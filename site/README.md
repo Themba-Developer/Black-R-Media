@@ -9,7 +9,7 @@ Clients are real admin-managed records; no invented customers are seeded. Admins
 Visitor chat uses a private conversation token saved in the visitor's browser; messages persist in D1. Visitors need the same browser to resume. Visitor messages refresh every four seconds; management refreshes every five seconds. Team availability is not implied. No email or push notifications are configured.
 
 Build: `node scripts/compile.mjs && bash scripts/build.sh`.
-Verify: `node scripts/test.mjs && node scripts/validate-artifact.mjs` (Node 22+ for SQLite).
+Verify: `npm test && npm run validate` (Node 22+ for SQLite).
 Schema migrations live in `drizzle/`; apply pending migrations with `npm run db:migrate` before deploying. Source logo was rendered from the supplied PDF using macOS sips.
 
 ## Direct Cloudflare deployment
@@ -24,4 +24,10 @@ Cloudflare TURN is configured on the live Worker through private `TURN_KEY_ID` a
 
 Voice migration: `npm run db:migrate`. For local preview also run `npx wrangler d1 migrations apply black-r-media --local`.
 
-Caller waiting music uses an original melody synthesized in the browser, with no third-party recording or music download. It plays only while ringing and stops when answered or ended. Music is optional when Web Audio is unavailable.
+Caller waiting music uses the owner-supplied “Jam Session 1 (Live)” recording, trimmed to 6:00–6:30 (30 seconds) and encoded to `web/waiting-music.m4a`. The owner confirmed ownership of the track copyright. The browser decodes the clip once and loops it while ringing, stopping when answered or ended. Music is optional when Web Audio is unavailable. Only the selected excerpt is included in the website.
+
+## Chat archive
+
+After 24 hours without a new visitor message or team reply, conversations clear from the visitor chatbox and leave the active inbox. The original messages, senders and timestamps remain in D1. The authenticated dashboard’s Archive button opens read-only history with name/message search and pagination. Returning visitors start a separate conversation.
+
+Migration `0002_chat_archive.sql` backfills existing chats from their most recent message. A message trigger records subsequent activity. A five-minute Cron Trigger archives expired conversations even when the website is closed; chat/API access enforces expiry immediately. An ongoing, healthy voice call postpones archiving until the call ends. Polling does not extend the message inactivity window. Archive history is retained without automatic deletion.

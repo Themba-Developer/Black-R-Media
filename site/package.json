@@ -5,7 +5,7 @@
   "scripts": {
     "build": "node scripts/compile.mjs && bash scripts/build.sh",
     "validate": "node scripts/validate-artifact.mjs",
-    "test": "node scripts/test.mjs && node scripts/test-voice-playback.mjs && node scripts/test-voice-hold.mjs",
+    "test": "node scripts/test.mjs && node scripts/test-voice-playback.mjs && node scripts/test-voice-hold.mjs && node scripts/test-chat-archive.mjs && node scripts/test-chat-archive-ui.mjs",
     "deploy": "npm run build && npx wrangler deploy",
     "db:migrate": "npx wrangler d1 migrations apply black-r-media --remote"
   }

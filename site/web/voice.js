@@ -9,36 +9,35 @@ async function request(path,data){const c=identity();return api((isAdmin?'/admin
 function controls(show){el('voice-controls').hidden=!show;if(el('voice-start'))el('voice-start').hidden=show;el('voice-mute').textContent='Mute';el('voice-mute').setAttribute('aria-pressed','false')}
 function stopRing(){clearInterval(ringTimer);ringTimer=null;ringing=false}
 function ring(){if(ringing)return;ringing=true;const tone=()=>{if(!ringContext||ringContext.state!=='running')return;const oscillator=ringContext.createOscillator(),gain=ringContext.createGain();oscillator.connect(gain);gain.connect(ringContext.destination);oscillator.frequency.value=660;gain.gain.setValueAtTime(.08,ringContext.currentTime);gain.gain.exponentialRampToValueAtTime(.001,ringContext.currentTime+.3);oscillator.start();oscillator.stop(ringContext.currentTime+.3)};tone();ringTimer=setInterval(tone,1800)}
-// Original waiting melody, synthesized locally; no third-party recording is used.
-let holdContext=null,holdTimer=null,holdGain=null;
-const holdNotes=new Set();
+// Owner-supplied track, trimmed to 6:00–6:30 and decoded once for seamless looping.
+let holdContext=null,holdSource=null,holdGain=null,holdBuffer=null,holdLoading=null,holdWanted=false;
 function prepareHoldMusic(){
  if(isAdmin)return;
- try{const Context=window.AudioContext||window.webkitAudioContext;if(!Context)return;holdContext ||= new Context();holdContext.resume().catch(()=>{});}catch{}
+ try{
+  const Context=window.AudioContext||window.webkitAudioContext;if(!Context)return;
+  holdContext ||= new Context();holdContext.resume().catch(()=>{});
+  if(!holdBuffer&&!holdLoading){
+   holdLoading=fetch('/waiting-music.m4a').then(response=>{if(!response.ok)throw Error('Waiting music unavailable');return response.arrayBuffer()})
+   .then(bytes=>holdContext.decodeAudioData(bytes)).then(buffer=>{holdBuffer=buffer;holdLoading=null;if(holdWanted)startHoldMusic()})
+   .catch(()=>{holdLoading=null;});
+  }
+ }catch{}
 }
 function stopHoldMusic(){
- clearInterval(holdTimer);holdTimer=null;
+ holdWanted=false;
+ if(holdSource){try{holdSource.stop()}catch{}holdSource.disconnect();holdSource=null}
  if(holdGain){holdGain.disconnect();holdGain=null}
- for(const note of holdNotes){try{note.stop()}catch{}note.disconnect()}holdNotes.clear();
 }
-function resumeHoldMusic(){if(!holdContext||!holdGain)return;return holdContext.resume().then(()=>{if(holdGain&&holdContext.state==='running')resume.hidden=true}).catch(()=>{if(holdGain)resume.hidden=false});}
+function resumeHoldMusic(){
+ if(!holdContext||!holdWanted)return;
+ return holdContext.resume().then(()=>{if(holdWanted&&holdContext.state==='running')resume.hidden=true}).catch(()=>{if(holdWanted)resume.hidden=false});
+}
 function startHoldMusic(){
- stopHoldMusic();if(!holdContext)return;
+ holdWanted=true;if(!holdContext||!holdBuffer||holdSource)return;
  try{
-  holdGain=holdContext.createGain();holdGain.gain.value=.16;holdGain.connect(holdContext.destination);const destination=holdGain;
-  const note=(midi,when,duration,level,type='sine')=>{
-   const oscillator=holdContext.createOscillator(),envelope=holdContext.createGain();
-   oscillator.type=type;oscillator.frequency.value=440*2**((midi-69)/12);
-   envelope.gain.setValueAtTime(.001,when);envelope.gain.linearRampToValueAtTime(level,when+.025);envelope.gain.exponentialRampToValueAtTime(.001,when+duration);
-   oscillator.connect(envelope);envelope.connect(destination);holdNotes.add(oscillator);
-   oscillator.onended=()=>{holdNotes.delete(oscillator);oscillator.disconnect();envelope.disconnect()};oscillator.start(when);oscillator.stop(when+duration+.03);
-  };
-  const phrase=()=>{
-   if(holdGain!==destination)return;const at=holdContext.currentTime+.03;
-   [72,76,79,76,74,71,67,71,69,72,76,72,67,71,74,71].forEach((pitch,i)=>note(pitch,at+i*.5,.65,.25,'triangle'));
-   [[48,60,64,67],[43,59,62,67],[45,57,60,64],[41,57,60,65]].forEach((chord,i)=>chord.forEach((pitch,j)=>note(pitch,at+i*2,1.85,j===0?.3:.1)));
-  };
-  phrase();holdTimer=setInterval(phrase,8000);if(holdContext.state!=='running'){resume.hidden=false;resumeHoldMusic()}
+  holdGain=holdContext.createGain();holdGain.gain.value=.3;holdGain.connect(holdContext.destination);
+  holdSource=holdContext.createBufferSource();holdSource.buffer=holdBuffer;holdSource.loop=true;holdSource.loopStart=0;holdSource.loopEnd=Math.min(30,holdBuffer.duration);holdSource.connect(holdGain);holdSource.start();
+  if(holdContext.state!=='running'){resume.hidden=false;resumeHoldMusic()}
  }catch{stopHoldMusic()}
 }
 function cleanup(message){generation++;playbackBlocked=false;resume.hidden=true;stopRing();stopHoldMusic();clearTimeout(disconnectTimer);if(pc){pc.onconnectionstatechange=null;pc.onicecandidate=null;pc.close()}pc=null;stream?.getTracks().forEach(t=>t.stop());stream=null;audio.srcObject=null;call=null;cursor=0;pending=[];candidates=[];started=0;controls(false);if(el('incoming-call'))el('incoming-call').hidden=true;status(message)}
@@ -52,7 +51,7 @@ return connection;
 async function flush(version){const id=call?.id;const batch=candidates.splice(0);for(const candidate of batch){checkCall(version);await request(id+'/candidate',{candidate});checkCall(version)}}
 function failure(e){return e.name==='NotAllowedError'?'Microphone access was blocked. Open the site controls beside the browser address, set Microphone to Allow, then try again.':e.name==='NotFoundError'?'No microphone found. Connect one and try again.':e.message||'Could not start the call. Please try again.'}
 if(!supported){status('Voice calls are not supported in this browser. Please use chat.');if(el('voice-available'))el('voice-available').disabled=true;return}
-const resume=document.createElement('button');resume.type='button';resume.textContent='Resume audio';resume.hidden=true;audio.onpause=()=>{if(call&&audio.srcObject)resume.hidden=false};audio.onplaying=()=>{playbackBlocked=false;resume.hidden=true;if(pc?.connectionState==='connected')status('On a voice call')};resume.onclick=()=>{if(holdGain)return resumeHoldMusic();audio.muted=false;audio.volume=1;return playRemoteAudio()};el(isAdmin?'admin-voice':'visitor-voice').append(resume);
+const resume=document.createElement('button');resume.type='button';resume.textContent='Resume audio';resume.hidden=true;audio.onpause=()=>{if(call&&audio.srcObject)resume.hidden=false};audio.onplaying=()=>{playbackBlocked=false;resume.hidden=true;if(pc?.connectionState==='connected')status('On a voice call')};resume.onclick=()=>{if(holdWanted)return resumeHoldMusic();audio.muted=false;audio.volume=1;return playRemoteAudio()};el(isAdmin?'admin-voice':'visitor-voice').append(resume);
 el('voice-mute').onclick=()=>{if(!stream)return;const muted=stream.getAudioTracks().some(t=>t.enabled);stream.getAudioTracks().forEach(t=>t.enabled=!muted);el('voice-mute').textContent=muted?'Unmute':'Mute';el('voice-mute').setAttribute('aria-pressed',String(muted))};el('voice-end').onclick=()=>end();
 if(isAdmin){
  el('voice-available').onchange=async e=>{const checkbox=e.target,wanted=checkbox.checked;checkbox.disabled=true;try{if(wanted){status('Please allow microphone access when your browser asks.');const permissionStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});permissionStream.getTracks().forEach(track=>track.stop());ringContext ||= new (window.AudioContext||window.webkitAudioContext)();await ringContext.resume()}await request('presence',{available:wanted});available=wanted;status(available?'Microphone allowed. Ready for calls. Keep this dashboard open.':'You are not taking calls.')}catch(error){available=false;checkbox.checked=false;request('presence',{available:false}).catch(()=>{});status(failure(error))}finally{checkbox.disabled=false}};

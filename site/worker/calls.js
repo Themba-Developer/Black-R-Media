@@ -5,7 +5,7 @@ async function callsApi(r,env,{db,admin,body,json,err,text,uid}){
  const run=(q,...v)=>db.prepare(q).bind(...v).run(),first=(q,...v)=>db.prepare(q).bind(...v).first(),all=async(q,...v)=>(await db.prepare(q).bind(...v).all()).results;
  const isAdmin=p.startsWith('/api/admin/voice');if(isAdmin)await admin();
  let d=method==='POST'?await body(r):{},chat=r.headers.get('X-Chat-Id')||d.chat;
- if(!isAdmin){const t=r.headers.get('X-Chat-Token')||d.token;if(!chat||!t||!await first('SELECT id FROM chats WHERE id=? AND token=?',chat,t))err('Please start a chat before calling.',403)}
+ if(!isAdmin){await archiveChats(db);const t=r.headers.get('X-Chat-Token')||d.token;if(!chat||!t||!await first('SELECT id FROM chats WHERE id=? AND token=?',chat,t))err('Please start a chat before calling.',403);if((await first('SELECT archived_at FROM chats WHERE id=?',chat)).archived_at!==null)err('Your previous chat is archived. Please start a new chat before calling.',410)}
  await run("UPDATE calls SET state='ended' WHERE (state='ringing' AND created<?) OR (state='connected' AND (visitor_seen<? OR admin_seen<?))",now-45000,now-25000,now-25000);
  const route=p.replace(/^\/api\/(admin\/)?voice\/?/,'');
  if(route==='ice'&&method==='GET'){

@@ -1,0 +1,61 @@
+import {DatabaseSync} from 'node:sqlite';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import worker from '../worker/index.js';
+const sql=new DatabaseSync(':memory:');
+let now=Date.now();Date.now=()=>now;
+const day=86400000;
+for(const f of ['0000_initial.sql','0001_voice_calls.sql'])sql.exec(fs.readFileSync('drizzle/'+f,'utf8'));
+sql.prepare('INSERT INTO chats VALUES(?,?,?,?)').run('legacy','legacy-token','Legacy artist',now-2*day);
+sql.prepare('INSERT INTO messages VALUES(?,?,?,?,?)').run('legacy-message','legacy','visitor','Original retained message',now-1000);
+sql.exec(fs.readFileSync('drizzle/0002_chat_archive.sql','utf8'));
+assert.equal(sql.prepare('SELECT last_activity FROM chats WHERE id=?').get('legacy').last_activity,now-1000,'Migration backfills activity from the last message');
+const DB={prepare(q){let args=[];return {bind(...values){args=values;return this},async run(){return sql.prepare(q).run(...args)},async first(){return sql.prepare(q).get(...args)},async all(){return {results:sql.prepare(q).all(...args)}}}}};
+const env={DB,ADMIN_EMAIL:'admin@test.local',ADMIN_PASSWORD:'test-password'};
+let cookie='';
+async function req(path,data,headers={}){return worker.fetch(new Request('https://test.local'+path,{method:data?'POST':'GET',headers:{Origin:'https://test.local',Cookie:cookie,...headers},body:data?JSON.stringify(data):undefined}),env)}
+assert.equal((await req('/api/admin/chats?archived=1')).status,401);
+const login=await req('/api/login',{email:env.ADMIN_EMAIL,password:env.ADMIN_PASSWORD});cookie=login.headers.get('set-cookie').split(';')[0];
+const chat=await (await req('/api/chat',{name:'Archive Artist'})).json();
+const headers={'X-Chat-Token':chat.token};
+await req('/api/chat/'+chat.id,{token:chat.token,body:'Please preserve my launch agreement'});
+now+=1000;
+await req('/api/admin/chats/'+chat.id,{body:'Agreed launch date: 15 December'});
+const original=await (await req('/api/chat/'+chat.id,undefined,headers)).json();
+assert.equal(original.length,2);
+assert.equal(sql.prepare('SELECT last_activity FROM chats WHERE id=?').get(chat.id).last_activity,now,'Admin replies restart the inactivity window');
+// Authentication sessions are renewed after the 24-hour clock jump.
+async function signIn(){const r=await req('/api/login',{email:env.ADMIN_EMAIL,password:env.ADMIN_PASSWORD});cookie=r.headers.get('set-cookie').split(';')[0]}
+now+=day-1;await worker.scheduled({},env);
+assert.equal(sql.prepare('SELECT archived_at FROM chats WHERE id=?').get(chat.id).archived_at,null,'Still active just before the cutoff');
+assert.equal((await req('/api/chat/'+chat.id,undefined,headers)).status,200);
+now++;await worker.scheduled({},env);await signIn();
+const active=await (await req('/api/admin/chats')).json(),archive=await (await req('/api/admin/chats?archived=1')).json();
+assert.ok(!active.some(c=>c.id===chat.id));assert.ok(archive.some(c=>c.id===chat.id));
+assert.equal((await req('/api/chat/'+chat.id,undefined,headers)).status,410,'Expired visitor history is no longer returned');
+assert.equal((await req('/api/chat/'+chat.id,undefined,{'X-Chat-Token':'wrong'})).status,403);
+assert.equal((await req('/api/chat/'+chat.id,{token:chat.token,body:'Cannot modify archive'})).status,410);
+assert.equal((await req('/api/admin/chats/'+chat.id,{body:'Cannot rewrite archive'})).status,409);
+assert.deepEqual(await (await req('/api/admin/chats/'+chat.id)).json(),original,'All original messages, senders, IDs and timestamps are preserved');
+assert.ok((await (await req('/api/admin/chats?archived=1&search=launch%20agreement')).json()).some(c=>c.id===chat.id));
+assert.equal((await (await req('/api/admin/chats?archived=1&search=does-not-exist')).json()).length,0);
+assert.ok((await (await req('/api/admin/chats?archived=1&search=archive%20artist')).json()).some(c=>c.id===chat.id));
+const archivedAt=archive.find(c=>c.id===chat.id).archived_at;
+now+=1000;await worker.scheduled({},env);
+assert.equal(sql.prepare('SELECT archived_at FROM chats WHERE id=?').get(chat.id).archived_at,archivedAt,'Repeated maintenance leaves archive dates unchanged');
+const fresh=await (await req('/api/chat',{name:'Archive Artist'})).json();assert.notEqual(fresh.id,chat.id);assert.deepEqual(await (await req('/api/chat/'+fresh.id,undefined,{'X-Chat-Token':fresh.token})).json(),[]);
+// Expiration is also enforced on access without waiting for the next cron tick.
+sql.prepare('UPDATE chats SET last_activity=? WHERE id=?').run(now-day,fresh.id);
+assert.equal((await req('/api/chat/'+fresh.id,undefined,{'X-Chat-Token':fresh.token})).status,410);
+assert.equal((await req('/api/voice/presence',undefined,{'X-Chat-Id':fresh.id,'X-Chat-Token':fresh.token})).status,410,'Archived identities cannot start voice calls');
+// A live call delays archival until it has finished.
+const live=await (await req('/api/chat',{name:'Live caller'})).json();
+sql.prepare('UPDATE chats SET last_activity=? WHERE id=?').run(now-day,live.id);
+sql.prepare("INSERT INTO calls(id,chat,state,offer,created,visitor_seen,admin_seen) VALUES(?,?,'connected','offer',?,?,?)").run('live-call',live.id,now-1000,now,now);
+await worker.scheduled({},env);assert.equal(sql.prepare('SELECT archived_at FROM chats WHERE id=?').get(live.id).archived_at,null);
+sql.prepare("UPDATE calls SET state='ended' WHERE id='live-call'").run();await worker.scheduled({},env);assert.ok(sql.prepare('SELECT archived_at FROM chats WHERE id=?').get(live.id).archived_at);
+for(let i=0;i<55;i++)sql.prepare('INSERT INTO chats(id,token,name,created,last_activity,archived_at) VALUES(?,?,?,?,?,?)').run('page-'+i,'token-'+i,'Paging artist',now-day,now-day,now);
+const firstPage=await (await req('/api/admin/chats?archived=1&search=Paging')).json(),nextPage=await (await req('/api/admin/chats?archived=1&search=Paging&offset=50')).json();
+assert.equal(firstPage.length,50);assert.equal(nextPage.length,5);assert.equal(new Set([...firstPage,...nextPage].map(c=>c.id)).size,55);
+await req('/api/logout',{});assert.equal((await req('/api/admin/chats/'+chat.id)).status,401);
+console.log('PASS: archive migration/backfill, exact 24-hour inactivity cutoff, scheduled and request-time expiry, retained history, read-only archive, admin-only access, search/paging, fresh chats and active-call protection.');
