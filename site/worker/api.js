@@ -7,6 +7,7 @@ const session=r.headers.get('Cookie')?.match(/(?:^|; )brm_session=([^;]+)/)?.[1]
 if(/^\/api\/(admin\/)?voice(?:\/|$)/.test(p))return await callsApi(r,env,{db,admin,body,json,err,text,uid});
 if(p==='/api/logout'&&method==='POST'){if(session)await run('DELETE FROM sessions WHERE token=?',session);return json({ok:true},200,{'Set-Cookie':'brm_session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0'})}
 if(p==='/api/clients'&&method==='GET')return json(await all('SELECT * FROM clients ORDER BY created DESC'));
+if(p==='/api/associates'&&method==='GET')return json(await all('SELECT * FROM associates ORDER BY created DESC,id'));
 if(p.startsWith('/api/admin/')){await admin();if(p==='/api/admin/session')return json({ok:true});
 if(p==='/api/admin/chats'&&method==='GET'){
  await archiveChats(db);const params=new URL(r.url).searchParams,archived=params.get('archived')==='1',search=(params.get('search')||'').slice(0,200).trim(),offset=Math.max(0,Math.min(1000000,Number(params.get('offset'))||0));
@@ -26,6 +27,14 @@ if(p.startsWith('/api/admin/chats/')){
   if((result.meta?.changes??result.changes)===0)err('This conversation is archived. Its history is read-only.',409);return json({ok:true});
  }
 }
+if(p==='/api/admin/associates'&&method==='POST'){
+ const d=await body(r),id=d.id||uid(),old=d.id?await first('SELECT * FROM associates WHERE id=?',d.id):null;
+ if(d.id&&!old)err('Associate not found.',404);
+ const company=text(d.company,120),email=text(d.email,254),specialty=text(d.specialty,500);
+ if(!/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}$/.test(email))err('Please enter a valid email address.');
+ await run('INSERT INTO associates(id,company,email,specialty,created) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET company=excluded.company,email=excluded.email,specialty=excluded.specialty',id,company,email,specialty,old?.created||Date.now());return json({ok:true});
+}
+if(p.startsWith('/api/admin/associates/')&&method==='DELETE'){await run('DELETE FROM associates WHERE id=?',p.split('/').pop());return json({ok:true})}
 if(p==='/api/admin/clients'&&method==='POST'){const d=await body(r),id=d.id||uid(),old=d.id?await first('SELECT * FROM clients WHERE id=?',id):null;if(d.id&&!old)err('Client not found.',404);let image=d.image||old?.image;if(!image||!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(image)||image.length>2800000)err('Please upload a PNG, JPEG or WebP image smaller than 2 MB.');const links=['google','apple','huawei'].map(k=>{if(!d[k])return '';let url;try{url=new URL(d[k])}catch{err('Please enter a valid store URL.')}const hosts={google:['play.google.com'],apple:['apps.apple.com'],huawei:['appgallery.huawei.com','appgallery.cloud.huawei.com']};if(url.protocol!=='https:'||!hosts[k].includes(url.hostname))err('Please use the official '+k+' store HTTPS link.');return url.href});await run('INSERT INTO clients VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,image=excluded.image,google=excluded.google,apple=excluded.apple,huawei=excluded.huawei',id,text(d.name,120),text(d.description,2000),image,...links,old?.created||Date.now());return json({ok:true})}
 if(p.startsWith('/api/admin/clients/')&&method==='DELETE'){await run('DELETE FROM clients WHERE id=?',p.split('/').pop());return json({ok:true})}err('Not found.',404)}
 if(p==='/api/chat'&&method==='POST'){const d=await body(r);const ip=r.headers.get('CF-Connecting-IP')||'local',now=Date.now(),key='chat:'+ip;const a=await first('SELECT * FROM attempts WHERE ip=?',key);if(a&&a.reset>now&&a.count>=10)err('Please wait before starting another conversation.',429);await run('INSERT INTO attempts VALUES(?,1,?) ON CONFLICT(ip) DO UPDATE SET count=CASE WHEN reset<? THEN 1 ELSE count+1 END,reset=CASE WHEN reset<? THEN ? ELSE reset END',key,now+3600000,now,now,now+3600000);const id=uid(),t=token();await run('INSERT INTO chats(id,token,name,created,last_activity) VALUES(?,?,?,?,?)',id,t,text(d.name,80),now,now);return json({id,token:t})}

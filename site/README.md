@@ -37,3 +37,7 @@ Migration `0002_chat_archive.sql` backfills existing chats from their most recen
 `blackr.co.za/*` and `www.blackr.co.za/*` route to the `black-r-media` Worker through the existing Cloudflare zone. These exact-host routes take precedence over the older Pages website without modifying DNS, nameservers, Hostinger MX, SPF, DKIM, DMARC, or mailbox settings. The older Pages project remains available at its pages.dev address. To restore its custom-domain traffic, remove these two Worker routes and remove them from `wrangler.jsonc`.
 
 All client app store links are optional, including when creating a client. Supplied links must still be official store HTTPS URLs.
+
+## Associates
+
+The public associates section appears above the closing contact block. Admins can publish, edit and delete company names, public contact emails and specialties. All three fields are required. Apply migration `0003_associates.sql` before deploying this version. No example associates are seeded.

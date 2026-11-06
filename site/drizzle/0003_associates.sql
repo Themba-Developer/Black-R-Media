@@ -1,0 +1,1 @@
+CREATE TABLE associates (id TEXT PRIMARY KEY, company TEXT NOT NULL, email TEXT NOT NULL, specialty TEXT NOT NULL, created INTEGER NOT NULL);
