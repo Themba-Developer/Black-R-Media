@@ -2,7 +2,9 @@
 
 Landing page, client app listings, visitor chat and voice calls, with a protected management dashboard.
 
-Live website: https://black-r-media.mahlangu843.workers.dev
+Live website: https://blackr.co.za (also https://www.blackr.co.za)
+
+Worker URL: https://black-r-media.mahlangu843.workers.dev
 
 Application source and deployment commands are in [site/README.md](site/README.md).
 

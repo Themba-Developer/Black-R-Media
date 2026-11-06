@@ -31,3 +31,9 @@ Caller waiting music uses the owner-supplied “Jam Session 1 (Live)” recordin
 After 24 hours without a new visitor message or team reply, conversations clear from the visitor chatbox and leave the active inbox. The original messages, senders and timestamps remain in D1. The authenticated dashboard’s Archive button opens read-only history with name/message search and pagination. Returning visitors start a separate conversation.
 
 Migration `0002_chat_archive.sql` backfills existing chats from their most recent message. A message trigger records subsequent activity. A five-minute Cron Trigger archives expired conversations even when the website is closed; chat/API access enforces expiry immediately. An ongoing, healthy voice call postpones archiving until the call ends. Polling does not extend the message inactivity window. Archive history is retained without automatic deletion.
+
+## Website domain
+
+`blackr.co.za/*` and `www.blackr.co.za/*` route to the `black-r-media` Worker through the existing Cloudflare zone. These exact-host routes take precedence over the older Pages website without modifying DNS, nameservers, Hostinger MX, SPF, DKIM, DMARC, or mailbox settings. The older Pages project remains available at its pages.dev address. To restore its custom-domain traffic, remove these two Worker routes and remove them from `wrangler.jsonc`.
+
+All client app store links are optional, including when creating a client. Supplied links must still be official store HTTPS URLs.
